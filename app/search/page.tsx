@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 
 type NCBIGene = {
   id: string;
@@ -498,11 +499,11 @@ function SearchContent() {
                         <div className="mt-5 flex flex-wrap gap-3">
 
                           <Link
-  href={`/structure/${structure.pdbId}`}
-  className="rounded-lg bg-orange-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-orange-300"
->
-  Open Structure →
-</Link>
+                         href={`/structure/${structure.pdbId}`}
+                       className="rounded-lg bg-orange-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-orange-300"
+                         >
+                             Open Structure →
+                        </Link>
 
                           {structure.pubmedId && (
                             <a
@@ -547,5 +548,19 @@ function SearchContent() {
 }
 
 export default function SearchPage() {
-  return <SearchContent />;
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-slate-950 px-6 py-12 text-white">
+          <div className="mx-auto max-w-6xl">
+            <p className="text-slate-400">
+              Loading search...
+            </p>
+          </div>
+        </main>
+      }
+    >
+      <SearchContent />
+    </Suspense>
+  );
 }
