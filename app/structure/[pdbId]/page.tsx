@@ -1,4 +1,5 @@
 import Link from "next/link";
+import MolstarViewer from "./MolstarViewer";
 
 type PDBData = {
   rcsb_id?: string;
@@ -327,33 +328,18 @@ export default async function StructurePage({
         {/* 3D Structure */}
 
         <section className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-8">
+  <h2 className="text-2xl font-semibold">
+    3D Structure
+  </h2>
 
-          <h2 className="text-2xl font-semibold">
-            3D Structure
-          </h2>
+  <p className="mt-2 text-sm text-slate-400">
+    Interactive molecular structure viewer powered by Mol*.
+  </p>
 
-          <div className="mt-6 flex min-h-[400px] items-center justify-center rounded-xl border border-dashed border-white/10 bg-slate-900/50">
-
-            <div className="text-center">
-
-              <div className="text-5xl">
-                🧬
-              </div>
-
-              <h3 className="mt-5 text-xl font-semibold">
-                Interactive 3D Viewer
-              </h3>
-
-              <p className="mt-2 text-sm text-slate-400">
-                The molecular structure viewer will be
-                integrated into BioPlatform in the next step.
-              </p>
-
-            </div>
-
-          </div>
-
-        </section>
+  <div className="mt-6 overflow-hidden rounded-xl">
+    <MolstarViewer pdbId={displayPdbId} />
+  </div>
+</section>
 
         {/* Data Source */}
 
