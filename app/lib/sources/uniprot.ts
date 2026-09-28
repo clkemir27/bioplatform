@@ -1,4 +1,4 @@
-import type { BioProtein } from "@/app/lib/bio-types";
+import type { BioIdentifier, BioProtein } from "@/app/lib/bio-types";
 import type { InputType } from "@/app/lib/input-classifier";
 
 type UniProtResult = {
@@ -9,6 +9,10 @@ type UniProtResult = {
     recommendedName?: { fullName?: { value?: string } };
   };
   organism?: { scientificName?: string };
+  uniProtKBCrossReferences?: Array<{
+    database?: string;
+    id?: string;
+  }>;
 };
 
 type UniProtSearchResponse = { results?: UniProtResult[] };
@@ -43,6 +47,18 @@ export async function searchUniProt(
   return {
     entityType: "protein",
     source: "uniprot",
+    crossReferences: (result.uniProtKBCrossReferences || []).flatMap(
+      (reference): BioIdentifier[] =>
+        reference.database === "GeneID" && reference.id
+          ? [
+              {
+                source: "ncbi",
+                type: "ncbi_gene_id",
+                value: reference.id,
+              },
+            ]
+          : []
+    ),
     accession: result.primaryAccession || null,
     id: result.uniProtkbId || null,
     entryType: result.entryType || null,

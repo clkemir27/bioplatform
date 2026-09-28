@@ -2,7 +2,11 @@ import type { BioPublication } from "@/app/lib/bio-types";
 import type { InputType } from "@/app/lib/input-classifier";
 
 type PubMedSearchResponse = { esearchresult?: { idlist?: string[] } };
-type PubMedArticle = { title?: string; pubdate?: string };
+type PubMedArticle = {
+  title?: string;
+  pubdate?: string;
+  articleids?: Array<{ idtype?: string; value?: string }>;
+};
 type PubMedSummaryResponse = {
   result?: Record<string, PubMedArticle | undefined>;
 };
@@ -53,6 +57,17 @@ export async function searchPubMed(
     return {
       entityType: "publication",
       source: "pubmed",
+      crossReferences: (article?.articleids || []).flatMap((reference) =>
+        reference.idtype === "doi" && reference.value
+          ? [
+              {
+                source: "crossref" as const,
+                type: "doi" as const,
+                value: reference.value,
+              },
+            ]
+          : []
+      ),
       pmid: id,
       title: article?.title || "Unknown",
       pubDate: article?.pubdate || "Unknown",

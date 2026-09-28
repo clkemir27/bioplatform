@@ -23,6 +23,11 @@ export type BioIdentifier = {
 };
 
 export type BioRelationshipType =
+  | "protein_to_gene"
+  | "gene_to_protein"
+  | "protein_to_structure"
+  | "structure_to_protein"
+  | "publication_to_doi"
   | "structure_to_publication"
   | "structure_to_doi";
 
@@ -56,6 +61,7 @@ export type BioGene = {
 export type BioProtein = {
   entityType: "protein";
   source: "uniprot";
+  crossReferences?: BioIdentifier[];
   accession: string | null;
   id: string | null;
   entryType: string | null;
@@ -66,6 +72,7 @@ export type BioProtein = {
 export type BioPublication = {
   entityType: "publication";
   source: "pubmed";
+  crossReferences?: BioIdentifier[];
   pmid: string;
   title: string;
   pubDate: string;
@@ -74,6 +81,7 @@ export type BioPublication = {
 export type BioStructure = {
   entityType: "structure";
   source: "pdb";
+  crossReferences?: BioIdentifier[];
   pdbId: string;
   title: string;
   experimentalMethod: string;

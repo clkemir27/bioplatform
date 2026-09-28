@@ -1,4 +1,4 @@
-import type { BioStructure } from "@/app/lib/bio-types";
+import type { BioIdentifier, BioStructure } from "@/app/lib/bio-types";
 import type { InputType } from "@/app/lib/input-classifier";
 
 type RcsbSearchResponse = {
@@ -16,8 +16,12 @@ type RcsbEntryResponse = {
     title?: string;
     year?: number;
     pdbx_database_id_DOI?: string;
+    pdbx_database_id_PubMed?: string | number;
   };
-  rcsb_entry_container_identifiers?: { pubmed_ids?: string[] };
+  rcsb_entry_container_identifiers?: {
+    pubmed_ids?: string[];
+    pubmed_id?: string | number;
+  };
 };
 
 export async function searchRcsb(
@@ -65,6 +69,17 @@ export async function searchRcsb(
     return [];
   }
 
+  const queryReference: BioIdentifier[] =
+    inputType === "uniprot"
+      ? [
+          {
+            source: "uniprot",
+            type: "uniprot_accession",
+            value: query,
+          },
+        ]
+      : [];
+
   const results = await Promise.all(
     pdbIds.map(async (pdbId): Promise<BioStructure | null> => {
       try {
@@ -79,10 +94,18 @@ export async function searchRcsb(
 
         const data: RcsbEntryResponse = await response.json();
         const citation = data.rcsb_primary_citation;
+        const pubmedId =
+          data.rcsb_entry_container_identifiers?.pubmed_ids?.[0] ??
+          data.rcsb_entry_container_identifiers?.pubmed_id?.toString() ??
+          citation?.pdbx_database_id_PubMed?.toString() ??
+          null;
 
         return {
           entityType: "structure",
           source: "pdb",
+          ...(queryReference.length > 0
+            ? { crossReferences: queryReference }
+            : {}),
           pdbId,
           title: data.struct?.title || "Unknown",
           experimentalMethod:
@@ -94,8 +117,7 @@ export async function searchRcsb(
           citationTitle: citation?.title || null,
           citationYear: citation?.year || null,
           doi: citation?.pdbx_database_id_DOI || null,
-          pubmedId:
-            data.rcsb_entry_container_identifiers?.pubmed_ids?.[0] || null,
+          pubmedId,
           url: `https://www.rcsb.org/structure/${pdbId}`,
         };
       } catch (error) {

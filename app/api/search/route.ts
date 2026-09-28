@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { BioDoi, BioGene, BioProtein, BioPublication, BioStructure } from "@/app/lib/bio-types";
 import { classifyInput } from "@/app/lib/input-classifier";
+import { createBioLinkedEntity } from "@/app/lib/entity-linking";
 import { searchCrossref } from "@/app/lib/sources/crossref";
 import { searchNcbiGene } from "@/app/lib/sources/ncbi";
 import { searchPubMed } from "@/app/lib/sources/pubmed";
@@ -59,6 +60,19 @@ export async function GET(request: NextRequest) {
     pdb = [];
   }
 
+  const entities = [ncbiGene, uniProt, ...pdb, ...pubmed, doi].filter(
+    (entity) => entity !== null
+  );
+  const primaryEntity = uniProt ?? ncbiGene ?? pdb[0] ?? pubmed[0] ?? doi;
+  const linkedEntities = primaryEntity
+    ? [
+        createBioLinkedEntity(
+          primaryEntity,
+          entities.filter((entity) => entity !== primaryEntity)
+        ),
+      ]
+    : [];
+
   return NextResponse.json({
     query,
     inputType,
@@ -69,5 +83,6 @@ export async function GET(request: NextRequest) {
       pdb,
       doi,
     },
+    linkedEntities,
   });
 }
