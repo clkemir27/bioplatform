@@ -27,9 +27,12 @@ export type BioRelationshipType =
   | "gene_to_protein"
   | "protein_to_structure"
   | "structure_to_protein"
+  | "publication_to_structure"
   | "publication_to_doi"
+  | "doi_to_publication"
   | "structure_to_publication"
-  | "structure_to_doi";
+  | "structure_to_doi"
+  | "doi_to_structure";
 
 export type BioRelationship = {
   type: BioRelationshipType;

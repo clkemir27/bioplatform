@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getDoiPath } from "@/app/lib/internal-routes";
 import MolstarViewer from "./MolstarViewer";
 
 type PDBData = {
@@ -296,14 +297,12 @@ export default async function StructurePage({
                   PubMed
                 </p>
 
-                <a
-                  href={`https://pubmed.ncbi.nlm.nih.gov/${pubmedId}/`}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <Link
+                  href={`/publication/${pubmedId}`}
                   className="mt-2 inline-block text-purple-300 hover:text-purple-200 hover:underline"
                 >
                   PMID: {pubmedId}
-                </a>
+                </Link>
               </div>
             )}
 
@@ -315,9 +314,12 @@ export default async function StructurePage({
                   DOI
                 </p>
 
-                <p className="mt-2 font-mono text-sm text-cyan-300">
+                <Link
+                  href={getDoiPath(doi)}
+                  className="mt-2 inline-block break-all font-mono text-sm text-cyan-300 hover:text-cyan-200 hover:underline"
+                >
                   {doi}
-                </p>
+                </Link>
               </div>
             )}
 

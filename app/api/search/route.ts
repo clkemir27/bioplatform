@@ -60,6 +60,51 @@ export async function GET(request: NextRequest) {
     pdb = [];
   }
 
+  const existingPubMedIds = new Set(pubmed.map((publication) => publication.pmid));
+  const missingPubMedIds = [
+    ...new Set(
+      pdb.flatMap((structure) =>
+        structure.pubmedId ? [structure.pubmedId] : []
+      )
+    ),
+  ].filter((pmid) => !existingPubMedIds.has(pmid));
+
+  const rcsbPublications: BioPublication[] = [];
+  const pubmedLookupBatchSize = 2;
+
+  for (
+    let index = 0;
+    index < missingPubMedIds.length;
+    index += pubmedLookupBatchSize
+  ) {
+    if (index > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+
+    const batch = missingPubMedIds.slice(index, index + pubmedLookupBatchSize);
+    const batchResults = await Promise.all(
+      batch.map(async (pmid) => {
+        try {
+          return await searchPubMed(pmid, "pmid");
+        } catch (error) {
+          console.error(`PubMed lookup failed for RCSB PMID ${pmid}:`, error);
+          return [];
+        }
+      })
+    );
+
+    rcsbPublications.push(...batchResults.flat());
+  }
+
+  pubmed = [
+    ...new Map(
+      [...pubmed, ...rcsbPublications].map((publication) => [
+        publication.pmid,
+        publication,
+      ])
+    ).values(),
+  ];
+
   const entities = [ncbiGene, uniProt, ...pdb, ...pubmed, doi].filter(
     (entity) => entity !== null
   );

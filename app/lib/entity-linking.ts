@@ -113,6 +113,36 @@ function getReverseRelationship(
     };
   }
 
+  if (
+    relationship.type === "structure_to_publication" &&
+    sourceEntity.entityType === "structure"
+  ) {
+    return {
+      type: "publication_to_structure",
+      target: { source: "pdb", type: "pdb_id", value: sourceEntity.pdbId },
+    };
+  }
+
+  if (
+    relationship.type === "publication_to_doi" &&
+    sourceEntity.entityType === "publication"
+  ) {
+    return {
+      type: "doi_to_publication",
+      target: { source: "pubmed", type: "pmid", value: sourceEntity.pmid },
+    };
+  }
+
+  if (
+    relationship.type === "structure_to_doi" &&
+    sourceEntity.entityType === "structure"
+  ) {
+    return {
+      type: "doi_to_structure",
+      target: { source: "pdb", type: "pdb_id", value: sourceEntity.pdbId },
+    };
+  }
+
   return null;
 }
 
@@ -160,6 +190,40 @@ export function createBioLinkedEntity(
     if (directRelationships.length > 0 || reverseRelationships.length > 0) {
       relatedEntities.push(candidate);
       relationships.push(...directRelationships, ...reverseRelationships);
+    }
+  }
+
+  const publications = candidates.filter(
+    (entity) => entity.entityType === "publication"
+  );
+  const structures = candidates.filter(
+    (entity) => entity.entityType === "structure"
+  );
+
+  for (const publication of publications) {
+    for (const structure of structures) {
+      if (structure.pubmedId !== publication.pmid) {
+        continue;
+      }
+
+      relationships.push(
+        {
+          type: "publication_to_structure",
+          target: {
+            source: "pdb",
+            type: "pdb_id",
+            value: structure.pdbId,
+          },
+        },
+        {
+          type: "structure_to_publication",
+          target: {
+            source: "pubmed",
+            type: "pmid",
+            value: publication.pmid,
+          },
+        }
+      );
     }
   }
 

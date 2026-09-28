@@ -13,6 +13,7 @@ import type {
   BioStructure,
 } from "@/app/lib/bio-types";
 import type { InputType } from "@/app/lib/input-classifier";
+import { getDoiPath } from "@/app/lib/internal-routes";
 
 type SearchResponse = {
   query?: string;
@@ -325,24 +326,20 @@ function SearchExperience({ query }: { query: string }) {
                           {publication.title}
                         </h3>
                         <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-600">
-                          <a
-                            href={`https://pubmed.ncbi.nlm.nih.gov/${publication.pmid}/`}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                          <Link
+                            href={`/publication/${publication.pmid}`}
                             className="font-medium text-indigo-800 underline decoration-indigo-300 underline-offset-4 hover:text-indigo-950"
                           >
                             PMID {publication.pmid}
-                          </a>
+                          </Link>
                           <span>Published {publication.pubDate}</span>
                           {doi && (
-                            <a
-                              href={`https://doi.org/${doi}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                            <Link
+                              href={getDoiPath(doi)}
                               className="break-all font-medium text-emerald-800 underline decoration-emerald-300 underline-offset-4 hover:text-emerald-950"
                             >
                               DOI {doi}
-                            </a>
+                            </Link>
                           )}
                         </div>
                       </article>
@@ -423,14 +420,12 @@ function SearchExperience({ query }: { query: string }) {
                 <h3 className="mt-5 font-serif text-xl font-semibold leading-7 text-slate-950">
                   {sources.doi.title || "Title not available"}
                 </h3>
-                <a
-                  href={sources.doi.url || `https://doi.org/${sources.doi.doi}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <Link
+                  href={getDoiPath(sources.doi.doi)}
                   className="mt-3 inline-block break-all text-sm font-semibold text-rose-800 underline decoration-rose-300 underline-offset-4 hover:text-rose-950"
                 >
                   {sources.doi.doi}
-                </a>
+                </Link>
                 <dl className="mt-6 grid gap-5 border-t border-slate-100 pt-5 sm:grid-cols-2 lg:grid-cols-3">
                   <Field label="Publisher" value={sources.doi.publisher} />
                   <Field label="Journal" value={sources.doi.journal} />
