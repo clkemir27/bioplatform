@@ -4,53 +4,22 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
-
-type NCBIGene = {
-  id: string;
-  symbol: string;
-  name: string;
-  organism: string;
-  type: string;
-};
-
-type UniProt = {
-  accession: string | null;
-  id: string | null;
-  entryType: string | null;
-  proteinName: string | null;
-  organism: string | null;
-};
-
-type PubMedArticle = {
-  pmid: string;
-  title: string;
-  pubDate: string;
-};
-
-type PDBResolution = {
-  provenance_source?: string;
-  value?: number;
-};
-
-type PDBStructure = {
-  pdbId: string;
-  title: string;
-  experimentalMethod: string;
-  resolution: number | PDBResolution | null;
-  citationTitle: string | null;
-  citationYear: number | null;
-  doi: string | null;
-  pubmedId: string | null;
-  url: string;
-};
+import type {
+  BioDoi,
+  BioGene,
+  BioProtein,
+  BioPublication,
+  BioStructure,
+} from "@/app/lib/bio-types";
 
 type SearchResponse = {
   query?: string;
   sources?: {
-    ncbi?: NCBIGene | null;
-    uniprot?: UniProt | null;
-    pubmed?: PubMedArticle[];
-    pdb?: PDBStructure[];
+    ncbi?: BioGene | null;
+    uniprot?: BioProtein | null;
+    pubmed?: BioPublication[];
+    pdb?: BioStructure[];
+    doi?: BioDoi | null;
   };
   error?: string;
 };
@@ -109,22 +78,12 @@ function SearchContent() {
     };
   }, [query]);
 
-  function getResolution(
-    resolution: number | PDBResolution | null
-  ) {
+  function getResolution(resolution: BioStructure["resolution"]) {
     if (resolution === null) {
       return "—";
     }
 
-    if (typeof resolution === "number") {
-      return `${resolution} Å`;
-    }
-
-    if (typeof resolution.value === "number") {
-      return `${resolution.value} Å`;
-    }
-
-    return "—";
+    return `${resolution} Å`;
   }
 
   return (
@@ -238,7 +197,7 @@ function SearchContent() {
                       </p>
 
                       <p className="mt-2 font-semibold">
-                        {data.sources.ncbi.type}
+                        {data.sources.ncbi.geneType}
                       </p>
                     </div>
 
@@ -383,6 +342,46 @@ function SearchContent() {
 
                 </section>
               )}
+
+            {/* Crossref DOI */}
+
+            {data.sources?.doi && (
+              <section className="rounded-2xl border border-white/10 bg-white/5 p-8">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-2xl font-semibold">Crossref</h2>
+                  <span className="rounded-full bg-cyan-400/10 px-3 py-1 text-xs text-cyan-300">
+                    DOI
+                  </span>
+                </div>
+
+                <h3 className="mt-6 text-xl font-semibold">
+                  {data.sources.doi.title || "Untitled work"}
+                </h3>
+
+                <a
+                  href={data.sources.doi.url || `https://doi.org/${data.sources.doi.doi}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-3 inline-block text-cyan-300 hover:text-cyan-200 hover:underline"
+                >
+                  {data.sources.doi.doi}
+                </a>
+
+                <div className="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-400">
+                  {data.sources.doi.journal && (
+                    <span>{data.sources.doi.journal}</span>
+                  )}
+                  {data.sources.doi.publisher && (
+                    <span>{data.sources.doi.publisher}</span>
+                  )}
+                  {data.sources.doi.published && (
+                    <span>
+                      Published: {data.sources.doi.published.join("-")}
+                    </span>
+                  )}
+                </div>
+              </section>
+            )}
 
             {/* RCSB PDB */}
 
@@ -536,6 +535,7 @@ function SearchContent() {
             data.sources.pubmed.length === 0) &&
           (!data.sources?.pdb ||
             data.sources.pdb.length === 0) &&
+          !data.sources?.doi &&
           !error && (
             <p className="mt-10 text-slate-400">
               No biological results found.
