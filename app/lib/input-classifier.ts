@@ -16,7 +16,8 @@ export function classifyInput(input: string): InputType {
   }
 
   // DOI
-  if (/^10\.\d{4,9}\/\S+$/i.test(value)) {
+  const doi = value.replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, "");
+  if (/^10\.\d{4,9}\/\S+$/i.test(doi)) {
     return "doi";
   }
 
@@ -39,18 +40,20 @@ export function classifyInput(input: string): InputType {
     return "uniprot";
   }
 
+  const sequence = value.replace(/\s+/g, "");
+
   // DNA sequence
   if (
-    /^[ACGTN]+$/i.test(value) &&
-    value.length >= 10
+    /^[ACGTN]+$/i.test(sequence) &&
+    sequence.length >= 10
   ) {
     return "dna";
   }
 
   // Protein sequence
   if (
-    /^[ACDEFGHIKLMNPQRSTVWY]+$/i.test(value) &&
-    value.length >= 10
+    /^[ACDEFGHIKLMNPQRSTVWY]+$/i.test(sequence) &&
+    sequence.length >= 10
   ) {
     return "protein_sequence";
   }
