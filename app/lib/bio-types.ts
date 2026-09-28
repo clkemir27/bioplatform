@@ -5,6 +5,32 @@ export type BioSource =
   | "pdb"
   | "crossref";
 
+export type BioIdentifierSource = BioSource | "ensembl";
+
+export type BioIdentifierType =
+  | "ncbi_gene_id"
+  | "uniprot_accession"
+  | "pdb_id"
+  | "pmid"
+  | "doi"
+  | "ensembl_id"
+  | "refseq_accession";
+
+export type BioIdentifier = {
+  source: BioIdentifierSource;
+  type: BioIdentifierType;
+  value: string;
+};
+
+export type BioRelationshipType =
+  | "structure_to_publication"
+  | "structure_to_doi";
+
+export type BioRelationship = {
+  type: BioRelationshipType;
+  target: BioIdentifier;
+};
+
 export type BioEntityType =
   | "gene"
   | "protein"
@@ -78,3 +104,10 @@ export type BioEntity =
   | BioPublication
   | BioStructure
   | BioDoi;
+
+export type BioLinkedEntity = {
+  primary: BioEntity;
+  identifiers: BioIdentifier[];
+  relatedEntities: BioEntity[];
+  relationships: BioRelationship[];
+};
