@@ -19,6 +19,7 @@ type RcsbEntryResponse = {
     pdbx_database_id_PubMed?: string | number;
   };
   rcsb_entry_container_identifiers?: {
+    polymer_entity_ids?: string[];
     pubmed_ids?: string[];
     pubmed_id?: string | number;
   };
@@ -99,13 +100,68 @@ export async function searchRcsb(
           data.rcsb_entry_container_identifiers?.pubmed_id?.toString() ??
           citation?.pdbx_database_id_PubMed?.toString() ??
           null;
+        const polymerEntityIds =
+          data.rcsb_entry_container_identifiers?.polymer_entity_ids || [];
+        const polymerEntityReferences = await Promise.all(
+          polymerEntityIds.map(async (entityId): Promise<BioIdentifier[]> => {
+            try {
+              const polymerResponse = await fetch(
+                `https://data.rcsb.org/rest/v1/core/polymer_entity/${encodeURIComponent(
+                  pdbId
+                )}/${encodeURIComponent(entityId)}`,
+                { cache: "no-store" }
+              );
+
+              if (!polymerResponse.ok) {
+                return [];
+              }
+
+              const polymerData: {
+                rcsb_polymer_entity_container_identifiers?: {
+                  reference_sequence_identifiers?: Array<{
+                    database_name?: string;
+                    database_accession?: string;
+                  }>;
+                };
+              } = await polymerResponse.json();
+
+              return (
+                polymerData.rcsb_polymer_entity_container_identifiers
+                  ?.reference_sequence_identifiers || []
+              ).flatMap((reference) => {
+                const accession = reference.database_accession?.trim();
+                return reference.database_name === "UniProt" && accession
+                  ? [
+                      {
+                        source: "uniprot",
+                        type: "uniprot_accession",
+                        value: accession,
+                      },
+                    ]
+                  : [];
+              });
+            } catch {
+              return [];
+            }
+          })
+        );
+        const crossReferences = [
+          ...queryReference,
+          ...polymerEntityReferences.flat(),
+        ].filter(
+          (reference, index, references) =>
+            references.findIndex(
+              (candidate) =>
+                candidate.source === reference.source &&
+                candidate.type === reference.type &&
+                candidate.value === reference.value
+            ) === index
+        );
 
         return {
           entityType: "structure",
           source: "pdb",
-          ...(queryReference.length > 0
-            ? { crossReferences: queryReference }
-            : {}),
+          ...(crossReferences.length > 0 ? { crossReferences } : {}),
           pdbId,
           title: data.struct?.title || "Unknown",
           experimentalMethod:
