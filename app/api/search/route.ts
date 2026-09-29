@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import type { BioDoi, BioGene, BioProtein, BioPublication, BioStructure } from "@/app/lib/bio-types";
+import type {
+  BioDoi,
+  BioEnsemblGene,
+  BioGene,
+  BioHpaProtein,
+  BioProtein,
+  BioPublication,
+  BioStructure,
+} from "@/app/lib/bio-types";
 import { classifyInput } from "@/app/lib/input-classifier";
 import { createBioLinkedEntity } from "@/app/lib/entity-linking";
 import { searchCrossref } from "@/app/lib/sources/crossref";
-import { searchNcbiGene } from "@/app/lib/sources/ncbi";
+import { searchEnsemblGene as getEnsemblGene } from "@/app/lib/sources/ensembl";
+import { getHpaProtein } from "@/app/lib/sources/hpa";
+import { getGeneById, searchNcbiGene } from "@/app/lib/sources/ncbi";
 import { searchPubMed } from "@/app/lib/sources/pubmed";
 import { searchRcsb } from "@/app/lib/sources/rcsb";
 import { searchUniProt } from "@/app/lib/sources/uniprot";
@@ -20,6 +30,24 @@ export async function GET(request: NextRequest) {
 
   const inputType = classifyInput(query);
 
+  let hpaProtein: BioHpaProtein | null = null;
+  if (inputType === "ensembl" || inputType === "uniprot") {
+    try {
+      hpaProtein = await getHpaProtein(query);
+    } catch (error) {
+      console.error("HPA error:", error);
+    }
+  }
+
+  let ensemblGene: BioEnsemblGene | null = null;
+  if (inputType === "ensembl") {
+    try {
+      ensemblGene = await getEnsemblGene(query);
+    } catch (error) {
+      console.error("Ensembl error:", error);
+    }
+  }
+
   let doi: BioDoi | null = null;
   if (inputType === "doi") {
     try {
@@ -32,32 +60,53 @@ export async function GET(request: NextRequest) {
 
   let ncbiGene: BioGene | null = null;
   try {
-    ncbiGene = await searchNcbiGene(query);
+    if (inputType === "ensembl") {
+      const ncbiGeneId = ensemblGene?.crossReferences.find(
+        (reference) =>
+          reference.source === "ncbi" &&
+          reference.type === "ncbi_gene_id"
+      )?.value;
+      ncbiGene = ncbiGeneId ? await getGeneById(ncbiGeneId) : null;
+    } else if (inputType === "gene") {
+      ncbiGene = await searchNcbiGene(query);
+    }
   } catch (error) {
     console.error("NCBI error:", error);
   }
 
+  const downstreamQuery =
+    inputType === "ensembl"
+      ? ensemblGene?.symbol || ncbiGene?.symbol || null
+      : query;
+  const downstreamInputType = inputType === "ensembl" ? "gene" : inputType;
+
   let uniProt: BioProtein | null = null;
-  try {
-    uniProt = await searchUniProt(query, inputType);
-  } catch (error) {
-    console.error("UniProt error:", error);
+  if (downstreamQuery) {
+    try {
+      uniProt = await searchUniProt(downstreamQuery, downstreamInputType);
+    } catch (error) {
+      console.error("UniProt error:", error);
+    }
   }
 
   let pubmed: BioPublication[] = [];
-  try {
-    pubmed = await searchPubMed(query, inputType);
-  } catch (error) {
-    console.error("PubMed error:", error);
-    pubmed = [];
+  if (downstreamQuery) {
+    try {
+      pubmed = await searchPubMed(downstreamQuery, downstreamInputType);
+    } catch (error) {
+      console.error("PubMed error:", error);
+      pubmed = [];
+    }
   }
 
   let pdb: BioStructure[] = [];
-  try {
-    pdb = await searchRcsb(query, inputType);
-  } catch (error) {
-    console.error("RCSB error:", error);
-    pdb = [];
+  if (downstreamQuery) {
+    try {
+      pdb = await searchRcsb(downstreamQuery, downstreamInputType);
+    } catch (error) {
+      console.error("RCSB error:", error);
+      pdb = [];
+    }
   }
 
   const existingPubMedIds = new Set(pubmed.map((publication) => publication.pmid));
@@ -105,7 +154,7 @@ export async function GET(request: NextRequest) {
     ).values(),
   ];
 
-  const entities = [ncbiGene, uniProt, ...pdb, ...pubmed, doi].filter(
+  const entities = [ncbiGene, uniProt, hpaProtein, ...pdb, ...pubmed, doi].filter(
     (entity) => entity !== null
   );
   const primaryEntity = uniProt ?? ncbiGene ?? pdb[0] ?? pubmed[0] ?? doi;
@@ -122,6 +171,8 @@ export async function GET(request: NextRequest) {
     query,
     inputType,
     sources: {
+      hpa: hpaProtein,
+      ensembl: ensemblGene,
       ncbi: ncbiGene,
       uniprot: uniProt,
       pubmed,

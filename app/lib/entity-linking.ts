@@ -8,6 +8,17 @@ import type {
 export function getBioIdentifiers(entity: BioEntity): BioIdentifier[] {
   switch (entity.entityType) {
     case "gene":
+      if (entity.source === "ensembl") {
+        return [
+          {
+            source: "ensembl",
+            type: "ensembl_id",
+            value: entity.id,
+          },
+          ...entity.crossReferences,
+        ];
+      }
+
       return entity.id
         ? [{ source: "ncbi", type: "ncbi_gene_id", value: entity.id }]
         : [];
@@ -42,7 +53,18 @@ function getSourceRelationships(entity: BioEntity): BioRelationship[] {
 
   if (entity.entityType === "protein") {
     for (const reference of entity.crossReferences || []) {
-      if (reference.type === "ncbi_gene_id") {
+      if (
+        reference.source === "ncbi" &&
+        reference.type === "ncbi_gene_id"
+      ) {
+        relationships.push({ type: "protein_to_gene", target: reference });
+      }
+
+      if (
+        entity.source === "hpa" &&
+        reference.source === "ensembl" &&
+        reference.type === "ensembl_id"
+      ) {
         relationships.push({ type: "protein_to_gene", target: reference });
       }
     }
@@ -50,7 +72,10 @@ function getSourceRelationships(entity: BioEntity): BioRelationship[] {
 
   if (entity.entityType === "publication") {
     for (const reference of entity.crossReferences || []) {
-      if (reference.type === "doi") {
+      if (
+        reference.source === "crossref" &&
+        reference.type === "doi"
+      ) {
         relationships.push({ type: "publication_to_doi", target: reference });
       }
     }
@@ -58,7 +83,10 @@ function getSourceRelationships(entity: BioEntity): BioRelationship[] {
 
   if (entity.entityType === "structure") {
     for (const reference of entity.crossReferences || []) {
-      if (reference.type === "uniprot_accession") {
+      if (
+        reference.source === "uniprot" &&
+        reference.type === "uniprot_accession"
+      ) {
         relationships.push({
           type: "structure_to_protein",
           target: reference,
@@ -147,10 +175,94 @@ function getReverseRelationship(
 }
 
 function identifiersMatch(left: BioIdentifier, right: BioIdentifier): boolean {
+  const leftValue = left.type === "doi" ? left.value.toLowerCase() : left.value;
+  const rightValue = right.type === "doi" ? right.value.toLowerCase() : right.value;
+
   return (
     left.source === right.source &&
     left.type === right.type &&
-    left.value === right.value
+    leftValue === rightValue
+  );
+}
+
+function getRelationshipsBetween(
+  sourceEntity: BioEntity,
+  candidateEntity: BioEntity
+): BioRelationship[] {
+  const sourceIdentifiers = getBioIdentifiers(sourceEntity);
+  const candidateIdentifiers = getBioIdentifiers(candidateEntity);
+  const directRelationships = getSourceRelationships(sourceEntity).filter(
+    (relationship) =>
+      candidateIdentifiers.some((identifier) =>
+        identifiersMatch(identifier, relationship.target)
+      )
+  );
+  const directReverseRelationships = directRelationships.flatMap(
+    (relationship) => {
+      const reverse = getReverseRelationship(sourceEntity, relationship);
+      return reverse ? [reverse] : [];
+    }
+  );
+  const candidateRelationships = getSourceRelationships(candidateEntity)
+    .filter((relationship) =>
+      sourceIdentifiers.some((identifier) =>
+        identifiersMatch(identifier, relationship.target)
+      )
+    );
+  const candidateReverseRelationships = candidateRelationships.flatMap(
+    (relationship) => {
+      const reverse = getReverseRelationship(candidateEntity, relationship);
+      return reverse ? [reverse] : [];
+    }
+  );
+
+  return [
+    ...directRelationships,
+    ...directReverseRelationships,
+    ...candidateRelationships,
+    ...candidateReverseRelationships,
+  ];
+}
+
+function genesShareIdentifier(
+  left: BioEntity,
+  right: BioEntity
+): boolean {
+  if (left.entityType !== "gene" || right.entityType !== "gene") {
+    return false;
+  }
+
+  const leftIdentifiers = getBioIdentifiers(left);
+  const rightIdentifiers = getBioIdentifiers(right);
+
+  return leftIdentifiers.some((leftIdentifier) =>
+    rightIdentifiers.some((rightIdentifier) =>
+      identifiersMatch(leftIdentifier, rightIdentifier)
+    )
+  );
+}
+
+function hpaAndUniProtShareIdentifier(
+  left: BioEntity,
+  right: BioEntity
+): boolean {
+  const hpaEntity = left.source === "hpa" ? left : right.source === "hpa" ? right : null;
+  const uniProtEntity = left.source === "uniprot" ? left : right.source === "uniprot" ? right : null;
+
+  if (!hpaEntity || !uniProtEntity) {
+    return false;
+  }
+
+  const hpaIdentifiers = getBioIdentifiers(hpaEntity);
+  const uniProtIdentifiers = getBioIdentifiers(uniProtEntity);
+
+  return hpaIdentifiers.some(
+    (hpaIdentifier) =>
+      hpaIdentifier.source === "uniprot" &&
+      hpaIdentifier.type === "uniprot_accession" &&
+      uniProtIdentifiers.some((uniProtIdentifier) =>
+        identifiersMatch(hpaIdentifier, uniProtIdentifier)
+      )
   );
 }
 
@@ -165,64 +277,33 @@ export function createBioLinkedEntity(
   primary: BioEntity,
   candidates: readonly BioEntity[]
 ): BioLinkedEntity {
-  const primaryIdentifiers = getBioIdentifiers(primary);
   const relationships = getSourceRelationships(primary);
   const relatedEntities: BioEntity[] = [];
 
   for (const candidate of candidates) {
-    const candidateIdentifiers = getBioIdentifiers(candidate);
-    const directRelationships = relationships.filter((relationship) =>
-      candidateIdentifiers.some((identifier) =>
-        identifiersMatch(identifier, relationship.target)
-      )
-    );
-    const reverseRelationships = getSourceRelationships(candidate)
-      .filter((relationship) =>
-        primaryIdentifiers.some((identifier) =>
-          identifiersMatch(identifier, relationship.target)
-        )
-      )
-      .flatMap((relationship) => {
-        const reverse = getReverseRelationship(candidate, relationship);
-        return reverse ? [reverse] : [];
-      });
+    const candidateRelationships = getRelationshipsBetween(primary, candidate);
 
-    if (directRelationships.length > 0 || reverseRelationships.length > 0) {
+    if (
+      candidateRelationships.length > 0 ||
+      genesShareIdentifier(primary, candidate) ||
+      hpaAndUniProtShareIdentifier(primary, candidate)
+    ) {
       relatedEntities.push(candidate);
-      relationships.push(...directRelationships, ...reverseRelationships);
+      relationships.push(...candidateRelationships);
     }
   }
 
-  const publications = candidates.filter(
-    (entity) => entity.entityType === "publication"
-  );
-  const structures = candidates.filter(
-    (entity) => entity.entityType === "structure"
-  );
+  for (let sourceIndex = 0; sourceIndex < candidates.length; sourceIndex += 1) {
+    const sourceEntity = candidates[sourceIndex];
 
-  for (const publication of publications) {
-    for (const structure of structures) {
-      if (structure.pubmedId !== publication.pmid) {
-        continue;
-      }
-
+    for (
+      let candidateIndex = sourceIndex + 1;
+      candidateIndex < candidates.length;
+      candidateIndex += 1
+    ) {
+      const candidateEntity = candidates[candidateIndex];
       relationships.push(
-        {
-          type: "publication_to_structure",
-          target: {
-            source: "pdb",
-            type: "pdb_id",
-            value: structure.pdbId,
-          },
-        },
-        {
-          type: "structure_to_publication",
-          target: {
-            source: "pubmed",
-            type: "pmid",
-            value: publication.pmid,
-          },
-        }
+        ...getRelationshipsBetween(sourceEntity, candidateEntity)
       );
     }
   }

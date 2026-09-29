@@ -1,6 +1,7 @@
 export type BioSource =
   | "ncbi"
   | "uniprot"
+  | "hpa"
   | "pubmed"
   | "pdb"
   | "crossref";
@@ -61,6 +62,48 @@ export type BioGene = {
   geneType: string | null;
 };
 
+export type BioEnsemblGene = {
+  entityType: "gene";
+  source: "ensembl";
+  id: string;
+  symbol: string | null;
+  name: string | null;
+  organism: string | null;
+  geneType: string | null;
+  chromosome: string | null;
+  start: number | null;
+  end: number | null;
+  strand: number | null;
+  assemblyName: string | null;
+  crossReferences: BioIdentifier[];
+};
+
+export type BioHpaProtein = {
+  entityType: "protein";
+  source: "hpa";
+  ensemblId: string;
+  geneSymbol: string | null;
+  geneDescription: string | null;
+  uniprotAccessions: string[];
+  chromosome: string | null;
+  position: string | null;
+  rnaTissueSpecificity: string | null;
+  rnaTissueDistribution: string | null;
+  rnaTissueSpecificNTPM: Record<string, string> | null;
+  proteinTissueSpecificity: string | null;
+  proteinTissueDistribution: string | null;
+  proteinTissueSpecificIntensity: Record<string, string> | null;
+  tissueExpressionCluster: string | null;
+  evidence: string | null;
+  sourceUrl: string;
+  crossReferences: BioIdentifier[];
+} & Partial<
+    Pick<
+      BioProtein,
+      "accession" | "id" | "entryType" | "proteinName" | "organism"
+    >
+  >;
+
 export type BioProtein = {
   entityType: "protein";
   source: "uniprot";
@@ -70,6 +113,27 @@ export type BioProtein = {
   entryType: string | null;
   proteinName: string | null;
   organism: string | null;
+};
+
+export type BioSequenceHit = {
+  accession: string;
+  description: string;
+  organism: string | null;
+  identityPercent: number | null;
+  alignmentLength: number | null;
+  eValue: number | null;
+  bitScore: number | null;
+  queryStart: number | null;
+  queryEnd: number | null;
+  subjectStart: number | null;
+  subjectEnd: number | null;
+};
+
+export type BioSequenceSearchResult = {
+  queryLength: number | null;
+  database: string | null;
+  hits: BioSequenceHit[];
+  rawResult: string;
 };
 
 export type BioPublication = {
@@ -111,6 +175,8 @@ export type BioDoi = {
 
 export type BioEntity =
   | BioGene
+  | BioEnsemblGene
+  | BioHpaProtein
   | BioProtein
   | BioPublication
   | BioStructure

@@ -1,5 +1,9 @@
 import { XMLParser } from "fast-xml-parser";
 
+import type {
+  BioSequenceHit,
+  BioSequenceSearchResult,
+} from "@/app/lib/bio-types";
 import type { InputType } from "@/app/lib/input-classifier";
 
 export type SequenceSearchInputType = Extract<
@@ -37,6 +41,16 @@ const PROTEIN_SEQUENCE_PATTERN =
   /^[ACDEFGHIKLMNPQRSTVWYBXZJUO]+$/i;
 
 const JOB_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
+
+class BlastHttpError extends Error {
+  constructor(
+    message: string,
+    readonly status: number
+  ) {
+    super(message);
+    this.name = "BlastHttpError";
+  }
+}
 
 function getBlastConfiguration(
   inputType: SequenceSearchInputType
@@ -140,10 +154,11 @@ async function requestText(
 
   if (!response.ok) {
     const errorBody = text.trim();
-    throw new Error(
+    throw new BlastHttpError(
       `EMBL-EBI BLAST ${action} failed with HTTP ${response.status}${
         errorBody ? `: ${errorBody}` : ""
-      }`
+      }`,
+      response.status
     );
   }
 
@@ -287,17 +302,29 @@ export async function getSequenceSearchResults(
     );
   }
 
-  const {
-    text: resultTypesText,
-  } = await requestText(
-    `${SERVICE_URL}/resulttypes/${normalizedJobId}`,
-    "result type lookup",
-    {
-      headers: {
-        Accept: "application/xml",
+  let resultTypesText: string;
+
+  try {
+    const resultTypesResponse = await requestText(
+      `${SERVICE_URL}/resulttypes/${normalizedJobId}`,
+      "result type lookup",
+      {
+        headers: {
+          Accept: "application/xml",
+        },
       },
+    );
+    resultTypesText = resultTypesResponse.text;
+  } catch (error) {
+    if (error instanceof BlastHttpError && error.status === 500) {
+      throw new Error(
+        "EMBL-EBI BLAST result type lookup temporarily failed with HTTP 500. " +
+          "The job status is unchanged; please retry retrieving results later."
+      );
     }
-  );
+
+    throw error;
+  }
 
   let resultTypes: unknown;
 
@@ -348,4 +375,161 @@ export async function getSequenceSearchResults(
       response.headers.get("content-type"),
     rawResult,
   };
+}
+
+type BlastDefline = Pick<
+  BioSequenceHit,
+  "accession" | "description" | "organism"
+>;
+
+function parseBlastNumber(value: string | undefined): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = Number(value.replaceAll(",", ""));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseBlastDefline(hitSection: string): BlastDefline {
+  const firstLine = hitSection.split(/\r?\n/, 1)[0] || "";
+
+  if (!firstLine.startsWith(">")) {
+    return {
+      accession: "",
+      description: "",
+      organism: null,
+    };
+  }
+
+  const defline = firstLine.slice(1).trim();
+  const firstWhitespace = defline.search(/\s/);
+  const accession =
+    firstWhitespace < 0 ? defline : defline.slice(0, firstWhitespace);
+  const description =
+    firstWhitespace < 0 ? "" : defline.slice(firstWhitespace).trim();
+
+  const organismFromOs =
+    /\bOS=(.+?)(?=\s+(?:OX|GN|PE|SV)=|$)/i.exec(
+      description
+    )?.[1]?.trim();
+
+  const organismMatches = [
+    ...description.matchAll(/\[([^\]]+)\]/g),
+  ];
+  const organismFromBrackets = organismMatches.at(-1)?.[1];
+
+  return {
+    accession,
+    description,
+    organism: organismFromOs || organismFromBrackets || null,
+  };
+}
+
+function getFirstBlastAlignment(hitSection: string): string {
+  const scoreLines = [
+    ...hitSection.matchAll(/^[ \t]+Score\s*=/gim),
+  ];
+  const firstScoreIndex = scoreLines[0]?.index;
+
+  if (firstScoreIndex === undefined) {
+    return "";
+  }
+
+  return hitSection.slice(firstScoreIndex, scoreLines[1]?.index);
+}
+
+function parseAlignmentCoordinates(
+  alignment: string,
+  label: "Query" | "Sbjct"
+): { start: number | null; end: number | null } {
+  const pattern = new RegExp(
+    `^[ \t]*${label}[ \t]+(\\d+)[ \t]+[A-Za-z*.-]+[ \t]+(\\d+)[ \t]*$`,
+    "gim"
+  );
+  const coordinates: Array<{ start: number; end: number }> = [];
+  let match = pattern.exec(alignment);
+
+  while (match) {
+    coordinates.push({
+      start: Number(match[1]),
+      end: Number(match[2]),
+    });
+    match = pattern.exec(alignment);
+  }
+
+  return {
+    start: coordinates[0]?.start ?? null,
+    end: coordinates.at(-1)?.end ?? null,
+  };
+}
+
+function parseBlastHit(hitSection: string): BioSequenceHit | null {
+  const defline = parseBlastDefline(hitSection);
+  const alignment = getFirstBlastAlignment(hitSection);
+
+  if (!defline.accession || !alignment) {
+    return null;
+  }
+
+  const identities =
+    /Identities\s*=\s*(\d+)\/([\d,]+)\s*\(([\d.]+)%\)/i.exec(
+      alignment
+    );
+  const eValue =
+    /Expect(?:\(\d+\))?\s*=\s*([0-9]+(?:\.[0-9]+)?(?:[eE][+-]?\d+)?|\.[0-9]+(?:[eE][+-]?\d+)?)/i.exec(
+      alignment
+    )?.[1];
+  const bitScore =
+    /Score\s*=\s*([\d.]+)\s+bits\b/i.exec(alignment)?.[1];
+  const queryCoordinates = parseAlignmentCoordinates(alignment, "Query");
+  const subjectCoordinates = parseAlignmentCoordinates(alignment, "Sbjct");
+
+  return {
+    ...defline,
+    identityPercent: parseBlastNumber(identities?.[3]),
+    alignmentLength: parseBlastNumber(identities?.[2]),
+    eValue: parseBlastNumber(eValue),
+    bitScore: parseBlastNumber(bitScore),
+    queryStart: queryCoordinates.start,
+    queryEnd: queryCoordinates.end,
+    subjectStart: subjectCoordinates.start,
+    subjectEnd: subjectCoordinates.end,
+  };
+}
+
+export function parseBlastTextResult(
+  rawResult: string
+): BioSequenceSearchResult {
+  let queryLength: number | null = null;
+  let database: string | null = null;
+
+  try {
+    database =
+      /^\s*Database:\s*(\S+)/im.exec(rawResult)?.[1] || null;
+    queryLength = parseBlastNumber(
+      /^\s*Length\s*=\s*([\d,]+)/im.exec(rawResult)?.[1]
+    );
+
+    const hitSections = rawResult
+      .split(/(?=^>)/m)
+      .filter((section) => section.startsWith(">"));
+    const hits = hitSections
+      .map(parseBlastHit)
+      .filter((hit): hit is BioSequenceHit => hit !== null);
+
+    return {
+      queryLength,
+      database,
+      hits,
+      rawResult,
+    };
+  } catch {
+    return {
+      queryLength,
+      database,
+      hits: [],
+      rawResult,
+    };
+  }
 }

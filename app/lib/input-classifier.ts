@@ -3,6 +3,7 @@ export type InputType =
   | "pmid"
   | "doi"
   | "uniprot"
+  | "ensembl"
   | "dna"
   | "protein_sequence"
   | "gene"
@@ -40,6 +41,10 @@ export function classifyInput(input: string): InputType {
     return "uniprot";
   }
 
+  if (isEnsemblGeneId(value)) {
+    return "ensembl";
+  }
+
   const sequence = value.replace(/\s+/g, "");
 
   // DNA sequence
@@ -64,4 +69,8 @@ export function classifyInput(input: string): InputType {
   }
 
   return "unknown";
+}
+
+export function isEnsemblGeneId(value: string): boolean {
+  return /^ENS(?:[A-Z]{3})?G[0-9]{11}$/i.test(value);
 }

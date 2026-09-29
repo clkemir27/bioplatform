@@ -37,12 +37,21 @@ export async function searchRcsb(
     const attribute =
       inputType === "uniprot"
         ? "rcsb_polymer_entity_container_identifiers.reference_sequence_identifiers.database_accession"
-        : "rcsb_entity_source_organism.rcsb_gene_name.value";
+        : inputType === "pmid"
+          ? "rcsb_pubmed_container_identifiers.pubmed_id"
+          : inputType === "doi"
+            ? "rcsb_primary_citation.pdbx_database_id_DOI"
+            : "rcsb_entity_source_organism.rcsb_gene_name.value";
+    const isPmidQuery = inputType === "pmid";
     const searchBody = {
       query: {
         type: "terminal",
         service: "text",
-        parameters: { attribute, operator: "exact_match", value: query },
+        parameters: {
+          attribute,
+          operator: isPmidQuery ? "equals" : "exact_match",
+          value: isPmidQuery ? Number(query) : query,
+        },
       },
       return_type: "entry",
       request_options: { paginate: { start: 0, rows: 10 } },

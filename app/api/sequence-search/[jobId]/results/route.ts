@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { getSequenceSearchResults } from "@/app/lib/sources/ebi-blast";
+import type { BioSequenceSearchResult } from "@/app/lib/bio-types";
+import {
+  getSequenceSearchResults,
+  parseBlastTextResult,
+} from "@/app/lib/sources/ebi-blast";
 
 type SequenceSearchResultsRouteProps = {
   params: Promise<{ jobId: string }>;
@@ -13,7 +17,13 @@ export async function GET(
 
   try {
     const results = await getSequenceSearchResults(jobId);
-    return NextResponse.json(results, { status: 200 });
+    const normalizedResult: BioSequenceSearchResult =
+      parseBlastTextResult(results.rawResult);
+
+    return NextResponse.json(
+      { ...results, normalizedResult },
+      { status: 200 }
+    );
   } catch (error) {
     const message =
       error instanceof Error
